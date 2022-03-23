@@ -37,19 +37,17 @@ public func assertSnapshot<Value, Format>(
   testName: String = #function,
   line: UInt = #line
   ) {
-
-  let failure = verifySnapshot(
+  assertSnapshot(
     matching: try value(),
     as: snapshotting,
     named: name,
     record: recording,
     timeout: timeout,
+    strategyIndex: 0,
     file: file,
     testName: testName,
     line: line
   )
-  guard let message = failure else { return }
-  XCTFail(message, file: file, line: line)
 }
 
 /// Asserts that a given value matches references on disk.
@@ -106,12 +104,13 @@ public func assertSnapshots<Value, Format>(
   line: UInt = #line
   ) {
 
-  try? strategies.forEach { strategy in
+  try? strategies.enumerated().forEach { index, strategy in
     assertSnapshot(
       matching: try value(),
       as: strategy,
       record: recording,
       timeout: timeout,
+      strategyIndex: UInt(index),
       file: file,
       testName: testName,
       line: line
@@ -170,9 +169,64 @@ public func verifySnapshot<Value, Format>(
   file: StaticString = #file,
   testName: String = #function,
   line: UInt = #line
+)
+-> String? {
+  verifySnapshot(
+    matching: try value(),
+    as: snapshotting,
+    named: name,
+    record: recording,
+    snapshotDirectory: snapshotDirectory,
+    timeout: timeout,
+    strategyIndex: 0,
+    file: file,
+    testName: testName,
+    line: line
+  )
+}
+
+// MARK: - Private
+
+private func assertSnapshot<Value, Format>(
+  matching value: @autoclosure () throws -> Value,
+  as snapshotting: Snapshotting<Value, Format>,
+  named name: String? = nil,
+  record recording: Bool = false,
+  timeout: TimeInterval = 5,
+  strategyIndex: UInt,
+  file: StaticString = #file,
+  testName: String = #function,
+  line: UInt = #line
+  ) {
+
+  let failure = verifySnapshot(
+    matching: try value(),
+    as: snapshotting,
+    named: name,
+    record: recording,
+    timeout: timeout,
+    strategyIndex: strategyIndex,
+    file: file,
+    testName: testName,
+    line: line
+  )
+  guard let message = failure else { return }
+  XCTFail(message, file: file, line: line)
+}
+
+private func verifySnapshot<Value, Format>(
+  matching value: @autoclosure () throws -> Value,
+  as snapshotting: Snapshotting<Value, Format>,
+  named name: String? = nil,
+  record recording: Bool = false,
+  snapshotDirectory: String? = nil,
+  timeout: TimeInterval = 5,
+  strategyIndex: UInt,
+  file: StaticString = #file,
+  testName: String = #function,
+  line: UInt = #line
   )
   -> String? {
-
     let recording = recording || isRecording
 
     do {
@@ -191,8 +245,17 @@ public func verifySnapshot<Value, Format>(
       } else {
         let counter = counterQueue.sync { () -> Int in
           let key = snapshotDirectoryUrl.appendingPathComponent(testName)
-          counterMap[key, default: 0] += 1
-          return counterMap[key]!
+            
+          // Unfortunatelly there is no easy way to detect if snapshot is called repeatedly.
+          // So we use combined testName, line and strategyIndex to verify if test in such configuration
+          // was already executed in past. If so then we clean counterMap to start counting from 0.
+          let snapshotCallMetadata = "\(line).\(strategyIndex)"
+          if let previousCalls = counterMap[key], previousCalls.contains(snapshotCallMetadata) {
+              counterMap[key] = nil
+          }
+          counterMap[key, default: []].append(snapshotCallMetadata)
+          
+          return counterMap[key]!.count
         }
         identifier = String(counter)
       }
@@ -318,10 +381,8 @@ public func verifySnapshot<Value, Format>(
     }
 }
 
-// MARK: - Private
-
 private let counterQueue = DispatchQueue(label: "co.pointfree.SnapshotTesting.counter")
-private var counterMap: [URL: Int] = [:]
+private var counterMap: [URL: [String]] = [:]
 
 func sanitizePathComponent(_ string: String) -> String {
   return string
