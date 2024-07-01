@@ -1,0 +1,39 @@
+name: SnapshotTesting
+options:
+  bundleIdPrefix: co.pointfree
+  deploymentTarget:
+    iOS: 13.0
+    macOS: '10.15'
+    tvOS: 13.0
+    watchOS: 6.0
+  indentWidth: 2
+  tabWidth: 2
+  usesTabs: false
+targets:
+  SnapshotTesting:
+    platform: iOS
+    settings:
+      ENABLE_BITCODE: false
+      FRAMEWORK_SEARCH_PATHS: $(inherited) $(PLATFORM_DIR)/Developer/Library/Frameworks
+      SWIFT_VERSION: 5.7
+      APPLICATION_EXTENSION_API_ONLY: 'YES'
+      ENABLE_TESTING_SEARCH_PATHS: 'YES'
+    scheme:
+      environmentVariables:
+        SNAPSHOT_ARTIFACTS: /tmp/__SnapshotArtifacts__
+      testTargets: ['SnapshotTestingTests']
+    sources: [Sources/SnapshotTesting]
+    type: framework
+  SnapshotTestingTests:
+    dependencies: [{target: 'SnapshotTesting'}]
+    platform: iOS
+    settings:
+      SWIFT_VERSION: 5.5
+      APPLICATION_EXTENSION_API_ONLY: 'YES'
+    sources:
+      - path: Sources/SnapshotTesting
+        excludes:
+          - LinuxMain.swift
+          - '**/__Fixtures__'
+          - '**/__Snapshots__/SnapshotTestingTests'
+    type: bundle.unit-test
